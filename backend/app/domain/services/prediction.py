@@ -17,6 +17,10 @@ from app.ml.classical_model import (
     predict_with_classical_model,
 )
 from app.ml.preprocessing import preprocess_text
+from app.ml.transformer_model import (
+    TransformerArtifactError,
+    predict_with_transformer,
+)
 from app.schemas.prediction import PredictionRequest
 
 
@@ -70,14 +74,39 @@ class PredictionService:
             try:
                 prediction_result = (
                     predict_with_classical_model(
-                        artifact_path=model_version.artifact_path,
+                        artifact_path=(
+                            model_version.artifact_path
+                        ),
                         text=(
-                            preprocessing_result.normalized_text
+                            preprocessing_result
+                            .normalized_text
                         ),
                     )
                 )
 
             except ModelArtifactError as exc:
+                raise RuntimeError(
+                    str(exc)
+                ) from exc
+
+        elif model_version.architecture in {
+            "banglabert_sequence_classification",
+            "transformer_sequence_classification",
+        }:
+            try:
+                prediction_result = (
+                    predict_with_transformer(
+                        artifact_path=(
+                            model_version.artifact_path
+                        ),
+                        text=(
+                            preprocessing_result
+                            .normalized_text
+                        ),
+                    )
+                )
+
+            except TransformerArtifactError as exc:
                 raise RuntimeError(
                     str(exc)
                 ) from exc
