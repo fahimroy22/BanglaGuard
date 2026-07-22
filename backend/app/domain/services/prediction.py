@@ -12,6 +12,10 @@ from app.db.repositories.prediction import (
 )
 from app.domain.enums import PredictionStatus
 from app.ml.baseline import run_baseline_prediction
+from app.ml.classical_model import (
+    ModelArtifactError,
+    predict_with_classical_model,
+)
 from app.ml.preprocessing import preprocess_text
 from app.schemas.prediction import PredictionRequest
 
@@ -26,14 +30,8 @@ class PredictionService:
         session: AsyncSession,
     ) -> None:
         self.session = session
-
-        self.models = ModelVersionRepository(
-            session
-        )
-
-        self.predictions = PredictionRepository(
-            session
-        )
+        self.models = ModelVersionRepository(session)
+        self.predictions = PredictionRepository(session)
 
     async def predict(
         self,
@@ -52,10 +50,8 @@ class PredictionService:
                 raise ActiveModelNotFoundError
 
         else:
-            model_version = (
-                await self.models.get_active_model(
-                    payload.task
-                )
+            model_version = await self.models.get_active_model(
+                payload.task
             )
 
             if model_version is None:
@@ -67,10 +63,30 @@ class PredictionService:
             payload.text
         )
 
-        baseline_result = run_baseline_prediction(
-            preprocessing_result.normalized_text,
-            payload.task,
-        )
+        if model_version.architecture in {
+            "tfidf_logistic_regression",
+            "tfidf_linear_svm",
+        }:
+            try:
+                prediction_result = (
+                    predict_with_classical_model(
+                        artifact_path=model_version.artifact_path,
+                        text=(
+                            preprocessing_result.normalized_text
+                        ),
+                    )
+                )
+
+            except ModelArtifactError as exc:
+                raise RuntimeError(
+                    str(exc)
+                ) from exc
+
+        else:
+            prediction_result = run_baseline_prediction(
+                preprocessing_result.normalized_text,
+                payload.task,
+            )
 
         latency_ms = (
             perf_counter() - started_at
@@ -94,11 +110,11 @@ class PredictionService:
             language_form=(
                 preprocessing_result.language_form
             ),
-            predicted_label=baseline_result.label,
-            confidence=baseline_result.confidence,
-            probabilities=baseline_result.probabilities,
+            predicted_label=prediction_result.label,
+            confidence=prediction_result.confidence,
+            probabilities=prediction_result.probabilities,
             explanation=(
-                baseline_result.explanation
+                prediction_result.explanation
                 if payload.include_explanation
                 else None
             ),
