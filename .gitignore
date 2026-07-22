@@ -55,3 +55,15 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Alembic and Python build artifacts
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Docker
+*.pid
+
+# Local database dumps
+*.sql
+*.dump
