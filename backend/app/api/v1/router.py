@@ -9,7 +9,9 @@ from app.api.v1.users import router as users_router
 from app.api.v1.predictions import (
     router as predictions_router,
 )
-
+from app.api.v1.datasets import (
+    router as datasets_router,
+)
 
 api_router = APIRouter()
 
@@ -18,3 +20,4 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(model_versions_router)
 api_router.include_router(predictions_router)
+api_router.include_router(datasets_router)
