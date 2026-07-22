@@ -4,7 +4,10 @@ from typing import Any
 
 from pydantic import Field
 
-from app.domain.enums import AnalysisTask, PredictionStatus
+from app.domain.enums import (
+    AnalysisTask,
+    PredictionStatus,
+)
 from app.schemas.common import ORMModel
 
 
@@ -12,7 +15,9 @@ class PredictionRequest(ORMModel):
     text: str = Field(
         min_length=1,
         max_length=5000,
-        examples=["এই লেখাটি বিশ্লেষণ করুন"],
+        examples=[
+            "এই লেখাটি বিশ্লেষণ করুন"
+        ],
     )
 
     task: AnalysisTask
@@ -36,5 +41,7 @@ class PredictionRead(ORMModel):
     probabilities: dict[str, float] | None
     explanation: dict[str, Any] | None
     latency_ms: float | None
+    error_message: str | None
 
     created_at: datetime
+    updated_at: datetime

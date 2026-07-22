@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     api_v1_prefix: str = "/api/v1"
     secret_key: str = Field(min_length=8)
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    store_prediction_text: bool = True
 
     frontend_url: str = "http://localhost:3000"
 
