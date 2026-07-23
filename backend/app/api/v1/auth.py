@@ -21,6 +21,9 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.schemas.user import UserRead
+from fastapi import Request
+
+from app.core.rate_limit import limiter
 
 
 router = APIRouter(
@@ -54,10 +57,14 @@ async def register_user(
     "/login",
     response_model=TokenResponse,
 )
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    session: AsyncSession = Depends(get_db_session),
-) -> TokenResponse:
+    session: AsyncSession = Depends(
+        get_db_session
+    ),
+):
     service = AuthService(session)
 
     try:

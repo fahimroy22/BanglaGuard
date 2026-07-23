@@ -1,0 +1,200 @@
+name: banglaguard-production
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: banglaguard-postgres-prod
+    restart: unless-stopped
+
+    env_file:
+      - .env.production
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - banglaguard_internal
+
+    security_opt:
+      - no-new-privileges:true
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: banglaguard-redis-prod
+    restart: unless-stopped
+
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD}"
+      ]
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - banglaguard_internal
+
+    security_opt:
+      - no-new-privileges:true
+
+
+  migrations:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: banglaguard-migrations
+
+    env_file:
+      - .env.production
+
+    command:
+      [
+        "alembic",
+        "upgrade",
+        "head"
+      ]
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - banglaguard_internal
+
+    restart: "no"
+
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: banglaguard-backend-prod
+    restart: unless-stopped
+
+    env_file:
+      - .env.production
+
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--workers",
+        "2",
+        "--proxy-headers",
+        "--forwarded-allow-ips=*"
+      ]
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+      migrations:
+        condition: service_completed_successfully
+
+    volumes:
+      - ./storage/models:/app/storage/models:ro
+      - upload_storage:/app/storage/uploads
+      - report_storage:/app/storage/reports
+
+    expose:
+      - "8000"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "http://127.0.0.1:8000/api/v1/health/live"
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 45s
+      retries: 3
+
+    networks:
+      - banglaguard_internal
+      - banglaguard_public
+
+    security_opt:
+      - no-new-privileges:true
+
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: banglaguard-nginx-prod
+    restart: unless-stopped
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+    networks:
+      - banglaguard_public
+
+    security_opt:
+      - no-new-privileges:true
+
+
+volumes:
+  postgres_data:
+  redis_data:
+  model_storage:
+  upload_storage:
+  report_storage:
+
+
+networks:
+  banglaguard_internal:
+    internal: true
+
+  banglaguard_public:
+    driver: bridge

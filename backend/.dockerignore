@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Development databases
+*.sqlite3
+*.db
+
+# Tests and temporary files
+tests/
+tmp/
+temp/
+*.log
+
+# Large local data and generated artifacts
+storage/uploads/
+storage/reports/
+research/data/raw/
+research/data/interim/
+research/data/processed/
+
+# Documentation
+docs/
+README.md

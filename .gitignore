@@ -67,3 +67,40 @@ backend/htmlcov/
 # Local database dumps
 *.sql
 *.dump
+
+# Production secrets
+.env.production
+.env.prod
+*.pem
+*.key
+
+# Persistent production data
+postgres_data/
+redis_data/
+
+# Runtime-generated files
+storage/uploads/*
+storage/reports/*
+
+# Preserve directories
+!storage/uploads/.gitkeep
+!storage/reports/.gitkeep
+
+.env
+.env.*
+!.env.example
+
+storage/uploads/*
+storage/reports/*
+storage/models/*
+research/data/processed/*
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+!storage/uploads/.gitkeep
+!storage/reports/.gitkeep
+!storage/models/.gitkeep

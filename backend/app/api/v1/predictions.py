@@ -5,15 +5,15 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     status,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
+from app.core.rate_limit import limiter
 from app.db.models import Prediction, User
-from app.db.repositories.prediction import (
-    PredictionRepository,
-)
+from app.db.repositories.prediction import PredictionRepository
 from app.db.session import get_db_session
 from app.domain.services.prediction import (
     ActiveModelNotFoundError,
@@ -38,14 +38,12 @@ router = APIRouter(
     response_model=PredictionRead,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("30/minute")
 async def create_prediction(
+    request: Request,
     payload: PredictionRequest,
-    current_user: User = Depends(
-        get_current_user
-    ),
-    session: AsyncSession = Depends(
-        get_db_session
-    ),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ) -> Prediction:
     service = PredictionService(session)
 
@@ -55,21 +53,65 @@ async def create_prediction(
             user=current_user,
         )
 
-    except ActiveModelNotFoundError:
+    except ActiveModelNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "No suitable model version is available "
                 "for the selected analysis task"
             ),
+        ) from exc
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/batch",
+    response_model=BatchPredictionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("5/minute")
+async def create_batch_prediction(
+    request: Request,
+    payload: BatchPredictionRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> BatchPredictionResponse:
+    service = PredictionService(session)
+
+    try:
+        return await service.predict_batch(
+            payload=payload,
+            user=current_user,
         )
+
+    except ActiveModelNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No suitable active model is available "
+                "for the selected task"
+            ),
+        ) from exc
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(
     "",
     response_model=list[PredictionRead],
 )
+@limiter.limit("60/minute")
 async def list_my_predictions(
+    request: Request,
     limit: int = Query(
         default=20,
         ge=1,
@@ -79,12 +121,8 @@ async def list_my_predictions(
         default=0,
         ge=0,
     ),
-    current_user: User = Depends(
-        get_current_user
-    ),
-    session: AsyncSession = Depends(
-        get_db_session
-    ),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ) -> list[Prediction]:
     repository = PredictionRepository(session)
 
@@ -99,14 +137,12 @@ async def list_my_predictions(
     "/{prediction_id}",
     response_model=PredictionRead,
 )
+@limiter.limit("60/minute")
 async def get_my_prediction(
+    request: Request,
     prediction_id: uuid.UUID,
-    current_user: User = Depends(
-        get_current_user
-    ),
-    session: AsyncSession = Depends(
-        get_db_session
-    ),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
 ) -> Prediction:
     repository = PredictionRepository(session)
 
@@ -122,34 +158,3 @@ async def get_my_prediction(
         )
 
     return prediction
-
-@router.post(
-    "/batch",
-    response_model=BatchPredictionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_batch_prediction(
-    payload: BatchPredictionRequest,
-    current_user: User = Depends(
-        get_current_user
-    ),
-    session: AsyncSession = Depends(
-        get_db_session
-    ),
-) -> BatchPredictionResponse:
-    service = PredictionService(session)
-
-    try:
-        return await service.predict_batch(
-            payload=payload,
-            user=current_user,
-        )
-
-    except ActiveModelNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "No suitable active model is "
-                "available for the selected task"
-            ),
-        )
