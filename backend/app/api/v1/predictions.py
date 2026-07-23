@@ -20,6 +20,8 @@ from app.domain.services.prediction import (
     PredictionService,
 )
 from app.schemas.prediction import (
+    BatchPredictionRequest,
+    BatchPredictionResponse,
     PredictionRead,
     PredictionRequest,
 )
@@ -120,3 +122,34 @@ async def get_my_prediction(
         )
 
     return prediction
+
+@router.post(
+    "/batch",
+    response_model=BatchPredictionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_batch_prediction(
+    payload: BatchPredictionRequest,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    session: AsyncSession = Depends(
+        get_db_session
+    ),
+) -> BatchPredictionResponse:
+    service = PredictionService(session)
+
+    try:
+        return await service.predict_batch(
+            payload=payload,
+            user=current_user,
+        )
+
+    except ActiveModelNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No suitable active model is "
+                "available for the selected task"
+            ),
+        )

@@ -21,8 +21,12 @@ from app.ml.transformer_model import (
     TransformerArtifactError,
     predict_with_transformer,
 )
-from app.schemas.prediction import PredictionRequest
-
+from app.schemas.prediction import (
+    BatchPredictionRequest,
+    BatchPredictionResponse,
+    BatchPredictionResultItem,
+    PredictionRequest,
+)
 
 class ActiveModelNotFoundError(Exception):
     pass
@@ -154,3 +158,85 @@ class PredictionService:
         return await self.predictions.add(
             prediction
         )
+    async def predict_batch(
+        self,
+        payload: BatchPredictionRequest,
+        user: User,
+    ) -> BatchPredictionResponse:
+        started_at = perf_counter()
+
+        results: list[
+            BatchPredictionResultItem
+        ] = []
+
+        errors: list[dict[str, str | int | None]] = []
+
+        selected_model_version_id = (
+            payload.model_version_id
+        )
+
+        for index, item in enumerate(payload.items):
+            try:
+                single_request = PredictionRequest(
+                    text=item.text,
+                    task=payload.task,
+                    model_version_id=(
+                        payload.model_version_id
+                    ),
+                    include_explanation=(
+                        payload.include_explanation
+                    ),
+                )
+
+                prediction = await self.predict(
+                    payload=single_request,
+                    user=user,
+                )
+
+                if selected_model_version_id is None:
+                    selected_model_version_id = (
+                        prediction.model_version_id
+                    )
+
+                results.append(
+                    BatchPredictionResultItem(
+                        client_reference=(
+                            item.client_reference
+                        ),
+                        prediction=prediction,
+                    )
+                )
+
+            except Exception as exc:
+                errors.append(
+                    {
+                        "index": index,
+                        "client_reference": (
+                            item.client_reference
+                        ),
+                        "error": str(exc),
+                    }
+                )
+
+        processing_time_ms = (
+            perf_counter() - started_at
+        ) * 1000
+
+        if selected_model_version_id is None:
+            raise ActiveModelNotFoundError
+
+        return BatchPredictionResponse(
+            task=payload.task,
+            model_version_id=(
+                selected_model_version_id
+            ),
+            total_items=len(payload.items),
+            completed_items=len(results),
+            failed_items=len(errors),
+            processing_time_ms=round(
+                processing_time_ms,
+                3,
+            ),
+            results=results,
+            errors=errors,
+        )    
