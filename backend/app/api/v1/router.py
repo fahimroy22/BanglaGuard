@@ -18,6 +18,9 @@ from app.api.v1.experiments import (
 from app.api.v1.feedback import (
     router as feedback_router,
 )
+from app.api.v1.analytics import (
+    router as analytics_router,
+)
 
 api_router = APIRouter()
 
@@ -31,3 +34,6 @@ api_router.include_router(
     experiments_router
 )
 api_router.include_router(feedback_router)
+api_router.include_router(
+    analytics_router
+)
