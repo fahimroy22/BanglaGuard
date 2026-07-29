@@ -182,6 +182,9 @@ function getFeedbackTotal(
 
 function getFeedbackAccuracy(
   feedback: {
+    agreement_rate?:
+      | number
+      | null;
     observed_feedback_accuracy?:
       | number
       | null;
@@ -191,6 +194,7 @@ function getFeedbackAccuracy(
   },
 ): number | null {
   return (
+    feedback.agreement_rate ??
     feedback
       .observed_feedback_accuracy ??
     feedback.observed_accuracy ??
@@ -264,6 +268,11 @@ export function AnalyticsDashboard() {
 
   const [isExporting, setIsExporting] =
     useState(false);
+
+  const [
+    selectedEvaluationModelId,
+    setSelectedEvaluationModelId,
+  ] = useState("");
 
   const dateFilters = useMemo(
     () => getDateFilters(dateRange),
@@ -453,6 +462,20 @@ export function AnalyticsDashboard() {
   const comparison =
     comparisonQuery.data ?? [];
 
+  const selectedEvaluationModel =
+    comparison.find(
+      (item) =>
+        item.model_version_id ===
+        selectedEvaluationModelId,
+    ) ??
+    comparison.find(
+      (item) =>
+        item.status.toLowerCase() ===
+        "active",
+    ) ??
+    comparison[0] ??
+    null;
+
   if (!dashboard) {
     return null;
   }
@@ -575,20 +598,40 @@ export function AnalyticsDashboard() {
         />
       </section>
 
+      <ResearchEvaluationPanel
+        items={comparison}
+        selectedItem={
+          selectedEvaluationModel
+        }
+        selectedModelId={
+          selectedEvaluationModel
+            ?.model_version_id ?? ""
+        }
+        onSelectedModelChange={
+          setSelectedEvaluationModelId
+        }
+      />
+
       <section className="grid gap-6 xl:grid-cols-[1fr_1.5fr]">
         <FeedbackCard
           total={feedbackTotal}
           correct={
+            summary.feedback.correct ??
             summary.feedback
-              .correct_feedback ?? 0
+              .correct_feedback ??
+            0
           }
           incorrect={
+            summary.feedback.incorrect ??
             summary.feedback
-              .incorrect_feedback ?? 0
+              .incorrect_feedback ??
+            0
           }
           pending={
+            summary.feedback.pending ??
             summary.feedback
-              .pending_feedback ?? 0
+              .pending_feedback ??
+            0
           }
           accuracy={
             feedbackAccuracy
@@ -1237,6 +1280,888 @@ function FeedbackMetric({
         {formatNumber(value)}
       </p>
     </div>
+  );
+}
+
+
+type UnknownRecord = Record<
+  string,
+  unknown
+>;
+
+type ClassReportRow = {
+  label: string;
+  precision: number | null;
+  recall: number | null;
+  f1Score: number | null;
+  support: number | null;
+};
+
+function isRecord(
+  value: unknown,
+): value is UnknownRecord {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function getMetricNumber(
+  metrics: UnknownRecord,
+  key: string,
+): number | null {
+  const value = metrics[key];
+
+  return typeof value === "number" &&
+    Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function getMetricString(
+  metrics: UnknownRecord,
+  key: string,
+): string | null {
+  const value = metrics[key];
+
+  return typeof value === "string"
+    ? value
+    : null;
+}
+
+function getMetricMatrix(
+  metrics: UnknownRecord,
+): number[][] {
+  const value =
+    metrics.confusion_matrix;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(Array.isArray)
+    .map((row) =>
+      row.map((cell) =>
+        typeof cell === "number" &&
+        Number.isFinite(cell)
+          ? cell
+          : 0,
+      ),
+    );
+}
+
+function getMetricLabels(
+  metrics: UnknownRecord,
+  matrix: number[][],
+): string[] {
+  const value =
+    metrics.confusion_matrix_labels;
+
+  if (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        typeof item === "string",
+    )
+  ) {
+    return value;
+  }
+
+  return matrix.map(
+    (_, index) =>
+      `Class ${index + 1}`,
+  );
+}
+
+function getClassReportRows(
+  metrics: UnknownRecord,
+): ClassReportRow[] {
+  const report =
+    metrics.classification_report;
+
+  if (!isRecord(report)) {
+    return [];
+  }
+
+  const ignoredKeys = new Set([
+    "accuracy",
+    "macro avg",
+    "weighted avg",
+    "micro avg",
+    "samples avg",
+  ]);
+
+  return Object.entries(report)
+    .filter(
+      ([label, value]) =>
+        !ignoredKeys.has(label) &&
+        isRecord(value),
+    )
+    .map(([label, value]) => {
+      const row =
+        value as UnknownRecord;
+
+      return {
+        label,
+        precision: getMetricNumber(
+          row,
+          "precision",
+        ),
+        recall: getMetricNumber(
+          row,
+          "recall",
+        ),
+        f1Score:
+          getMetricNumber(
+            row,
+            "f1-score",
+          ) ??
+          getMetricNumber(
+            row,
+            "f1_score",
+          ),
+        support: getMetricNumber(
+          row,
+          "support",
+        ),
+      };
+    });
+}
+
+function ResearchEvaluationPanel({
+  items,
+  selectedItem,
+  selectedModelId,
+  onSelectedModelChange,
+}: {
+  items: ModelComparisonItem[];
+  selectedItem:
+    | ModelComparisonItem
+    | null;
+  selectedModelId: string;
+  onSelectedModelChange: (
+    value: string,
+  ) => void;
+}) {
+  if (
+    items.length === 0 ||
+    !selectedItem
+  ) {
+    return (
+      <section className="rounded-3xl border bg-background p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <Sparkles className="size-5" />
+          </div>
+
+          <div>
+            <h2 className="font-semibold">
+              Research evaluation
+            </h2>
+
+            <p className="mt-1 text-sm text-muted-foreground">
+              Registered evaluation
+              evidence for trained models.
+            </p>
+          </div>
+        </div>
+
+        <EmptyBlock message="No registered model evaluation is available." />
+      </section>
+    );
+  }
+
+  const metrics =
+    selectedItem.registered_metrics;
+
+  const accuracy =
+    getMetricNumber(
+      metrics,
+      "accuracy",
+    );
+
+  const macroPrecision =
+    getMetricNumber(
+      metrics,
+      "macro_precision",
+    );
+
+  const macroRecall =
+    getMetricNumber(
+      metrics,
+      "macro_recall",
+    );
+
+  const macroF1 =
+    getMetricNumber(
+      metrics,
+      "macro_f1",
+    );
+
+  const weightedF1 =
+    getMetricNumber(
+      metrics,
+      "weighted_f1",
+    );
+
+  const validationAccuracy =
+    getMetricNumber(
+      metrics,
+      "validation_accuracy",
+    );
+
+  const validationMacroF1 =
+    getMetricNumber(
+      metrics,
+      "validation_macro_f1",
+    );
+
+  const trainingLoss =
+    getMetricNumber(
+      metrics,
+      "train_loss",
+    );
+
+  const validationLoss =
+    getMetricNumber(
+      metrics,
+      "validation_loss",
+    );
+
+  const testLoss =
+    getMetricNumber(
+      metrics,
+      "test_loss",
+    );
+
+  const runtime =
+    getMetricNumber(
+      metrics,
+      "training_runtime_seconds",
+    );
+
+  const trainingSamples =
+    getMetricNumber(
+      metrics,
+      "training_samples",
+    );
+
+  const validationSamples =
+    getMetricNumber(
+      metrics,
+      "validation_samples",
+    );
+
+  const evaluationSamples =
+    getMetricNumber(
+      metrics,
+      "evaluation_samples",
+    );
+
+  const evaluationSplit =
+    getMetricString(
+      metrics,
+      "evaluation_split",
+    );
+
+  const warning =
+    getMetricString(
+      metrics,
+      "warning",
+    );
+
+  const matrix =
+    getMetricMatrix(metrics);
+
+  const matrixLabels =
+    getMetricLabels(
+      metrics,
+      matrix,
+    );
+
+  const classRows =
+    getClassReportRows(metrics);
+
+  const hasMetrics =
+    Object.keys(metrics).length > 0;
+
+  return (
+    <section className="overflow-hidden rounded-3xl border bg-background">
+      <div className="p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <Sparkles className="size-5" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold">
+                Research evaluation
+              </h2>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Registered validation and
+                test evidence for trained
+                model versions.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full lg:max-w-sm">
+            <label
+              htmlFor="evaluation-model"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Evaluated model
+            </label>
+
+            <select
+              id="evaluation-model"
+              value={selectedModelId}
+              onChange={(event) =>
+                onSelectedModelChange(
+                  event.target.value,
+                )
+              }
+              className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+            >
+              {items.map((item) => (
+                <option
+                  key={
+                    item.model_version_id
+                  }
+                  value={
+                    item.model_version_id
+                  }
+                >
+                  {item.model_name} v
+                  {item.model_version}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <Badge variant="outline">
+            {formatWords(
+              selectedItem.architecture,
+            )}
+          </Badge>
+
+          <Badge
+            variant="outline"
+            className={cn(
+              selectedItem.status
+                .toLowerCase() ===
+                "active" &&
+                "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+            )}
+          >
+            {formatWords(
+              selectedItem.status,
+            )}
+          </Badge>
+
+          {evaluationSplit && (
+            <Badge variant="secondary">
+              {formatWords(
+                evaluationSplit,
+              )} evaluation
+            </Badge>
+          )}
+        </div>
+
+        {warning && (
+          <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <AlertCircle className="mt-0.5 size-5 shrink-0" />
+
+            <div>
+              <p className="font-semibold">
+                Research validity warning
+              </p>
+
+              <p className="mt-1">
+                {warning}
+              </p>
+
+              <p className="mt-2 text-xs opacity-80">
+                These figures validate the
+                pipeline only and must not
+                be presented as final or
+                publishable model
+                performance.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!hasMetrics ? (
+        <div className="border-t p-6">
+          <EmptyBlock message="This model does not have registered evaluation metrics." />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 border-t p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-5">
+            <EvaluationMetricCard
+              label="Test accuracy"
+              value={accuracy}
+            />
+
+            <EvaluationMetricCard
+              label="Macro precision"
+              value={macroPrecision}
+            />
+
+            <EvaluationMetricCard
+              label="Macro recall"
+              value={macroRecall}
+            />
+
+            <EvaluationMetricCard
+              label="Macro F1"
+              value={macroF1}
+            />
+
+            <EvaluationMetricCard
+              label="Weighted F1"
+              value={weightedF1}
+            />
+          </div>
+
+          <div className="grid gap-6 border-t p-5 sm:p-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <ConfusionMatrixCard
+              matrix={matrix}
+              labels={matrixLabels}
+            />
+
+            <EvaluationContextCard
+              validationAccuracy={
+                validationAccuracy
+              }
+              validationMacroF1={
+                validationMacroF1
+              }
+              trainingLoss={trainingLoss}
+              validationLoss={
+                validationLoss
+              }
+              testLoss={testLoss}
+              runtime={runtime}
+              trainingSamples={
+                trainingSamples
+              }
+              validationSamples={
+                validationSamples
+              }
+              evaluationSamples={
+                evaluationSamples
+              }
+              evaluationSplit={
+                evaluationSplit
+              }
+            />
+          </div>
+
+          <div className="border-t p-5 sm:p-6">
+            <ClassificationReportTable
+              rows={classRows}
+            />
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function EvaluationMetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | null;
+}) {
+  const normalized =
+    normalizePercentage(value);
+
+  return (
+    <article className="rounded-2xl border p-4">
+      <p className="text-xs text-muted-foreground">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-bold">
+        {formatPercentage(value)}
+      </p>
+
+      <Progress
+        className="mt-4 h-2"
+        value={normalized ?? 0}
+      />
+    </article>
+  );
+}
+
+function ConfusionMatrixCard({
+  matrix,
+  labels,
+}: {
+  matrix: number[][];
+  labels: string[];
+}) {
+  if (matrix.length === 0) {
+    return (
+      <section className="rounded-2xl border p-5">
+        <h3 className="font-semibold">
+          Confusion matrix
+        </h3>
+
+        <EmptyBlock message="No confusion matrix was registered for this model." />
+      </section>
+    );
+  }
+
+  const maximum = Math.max(
+    1,
+    ...matrix.flat(),
+  );
+
+  return (
+    <section className="overflow-hidden rounded-2xl border">
+      <div className="border-b p-5">
+        <h3 className="font-semibold">
+          Confusion matrix
+        </h3>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Rows are actual labels; columns
+          are predicted labels.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto p-5">
+        <table className="mx-auto text-center text-xs">
+          <thead>
+            <tr>
+              <th className="p-2 text-left text-muted-foreground">
+                Actual ↓ / Predicted →
+              </th>
+
+              {labels.map((label) => (
+                <th
+                  key={label}
+                  className="min-w-24 p-2 font-medium"
+                >
+                  {formatWords(label)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {matrix.map(
+              (row, rowIndex) => (
+                <tr key={rowIndex}>
+                  <th className="p-2 text-left font-medium">
+                    {formatWords(
+                      labels[rowIndex] ??
+                        `Class ${
+                          rowIndex + 1
+                        }`,
+                    )}
+                  </th>
+
+                  {row.map(
+                    (
+                      value,
+                      columnIndex,
+                    ) => {
+                      const intensity =
+                        value / maximum;
+
+                      return (
+                        <td
+                          key={
+                            columnIndex
+                          }
+                          className="p-1"
+                        >
+                          <div
+                            className="flex h-16 min-w-20 items-center justify-center rounded-xl border font-semibold"
+                            style={{
+                              backgroundColor: `rgba(16, 185, 129, ${
+                                0.08 +
+                                intensity *
+                                  0.55
+                              })`,
+                            }}
+                            title={`Actual ${
+                              labels[
+                                rowIndex
+                              ] ??
+                              rowIndex + 1
+                            }, predicted ${
+                              labels[
+                                columnIndex
+                              ] ??
+                              columnIndex +
+                                1
+                            }: ${value}`}
+                          >
+                            {formatNumber(
+                              value,
+                            )}
+                          </div>
+                        </td>
+                      );
+                    },
+                  )}
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function formatDecimal(
+  value: number | null,
+): string {
+  if (value === null) {
+    return "—";
+  }
+
+  return value.toFixed(4);
+}
+
+function formatRuntimeSeconds(
+  value: number | null,
+): string {
+  if (value === null) {
+    return "—";
+  }
+
+  if (value >= 60) {
+    return `${(
+      value / 60
+    ).toFixed(2)} min`;
+  }
+
+  return `${value.toFixed(2)} s`;
+}
+
+function EvaluationContextCard({
+  validationAccuracy,
+  validationMacroF1,
+  trainingLoss,
+  validationLoss,
+  testLoss,
+  runtime,
+  trainingSamples,
+  validationSamples,
+  evaluationSamples,
+  evaluationSplit,
+}: {
+  validationAccuracy: number | null;
+  validationMacroF1: number | null;
+  trainingLoss: number | null;
+  validationLoss: number | null;
+  testLoss: number | null;
+  runtime: number | null;
+  trainingSamples: number | null;
+  validationSamples: number | null;
+  evaluationSamples: number | null;
+  evaluationSplit: string | null;
+}) {
+  const rows = [
+    {
+      label: "Validation accuracy",
+      value: formatPercentage(
+        validationAccuracy,
+      ),
+    },
+    {
+      label: "Validation macro F1",
+      value: formatPercentage(
+        validationMacroF1,
+      ),
+    },
+    {
+      label: "Training loss",
+      value: formatDecimal(
+        trainingLoss,
+      ),
+    },
+    {
+      label: "Validation loss",
+      value: formatDecimal(
+        validationLoss,
+      ),
+    },
+    {
+      label: "Test loss",
+      value: formatDecimal(testLoss),
+    },
+    {
+      label: "Training runtime",
+      value: formatRuntimeSeconds(
+        runtime,
+      ),
+    },
+    {
+      label: "Training samples",
+      value: formatNumber(
+        trainingSamples,
+      ),
+    },
+    {
+      label: "Validation samples",
+      value: formatNumber(
+        validationSamples,
+      ),
+    },
+    {
+      label: `${
+        evaluationSplit
+          ? formatWords(
+              evaluationSplit,
+            )
+          : "Evaluation"
+      } samples`,
+      value: formatNumber(
+        evaluationSamples,
+      ),
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border">
+      <div className="border-b p-5">
+        <h3 className="font-semibold">
+          Evaluation context
+        </h3>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Dataset size, validation
+          evidence, losses, and runtime.
+        </p>
+      </div>
+
+      <dl className="divide-y">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-4 px-5 py-3"
+          >
+            <dt className="text-sm text-muted-foreground">
+              {row.label}
+            </dt>
+
+            <dd className="text-sm font-semibold">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ClassificationReportTable({
+  rows,
+}: {
+  rows: ClassReportRow[];
+}) {
+  return (
+    <section>
+      <div>
+        <h3 className="font-semibold">
+          Per-class performance
+        </h3>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Precision, recall and F1 evidence
+          from the registered classification
+          report.
+        </p>
+      </div>
+
+      {rows.length > 0 ? (
+        <div className="mt-5 overflow-x-auto rounded-2xl border">
+          <table className="w-full min-w-[650px] text-sm">
+            <thead className="bg-muted/40 text-left">
+              <tr>
+                <th className="px-5 py-4 font-medium">
+                  Class
+                </th>
+
+                <th className="px-5 py-4 font-medium">
+                  Precision
+                </th>
+
+                <th className="px-5 py-4 font-medium">
+                  Recall
+                </th>
+
+                <th className="px-5 py-4 font-medium">
+                  F1 score
+                </th>
+
+                <th className="px-5 py-4 font-medium">
+                  Support
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.label}
+                  className="border-t"
+                >
+                  <td className="px-5 py-4 font-medium">
+                    {formatWords(
+                      row.label,
+                    )}
+                  </td>
+
+                  <td className="px-5 py-4">
+                    {formatPercentage(
+                      row.precision,
+                    )}
+                  </td>
+
+                  <td className="px-5 py-4">
+                    {formatPercentage(
+                      row.recall,
+                    )}
+                  </td>
+
+                  <td className="px-5 py-4">
+                    {formatPercentage(
+                      row.f1Score,
+                    )}
+                  </td>
+
+                  <td className="px-5 py-4">
+                    {formatNumber(
+                      row.support,
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyBlock message="No per-class classification report was registered." />
+      )}
+    </section>
   );
 }
 

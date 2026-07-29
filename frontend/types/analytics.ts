@@ -17,6 +17,17 @@ export type FeedbackSummary = {
   total_feedback?: number;
   feedback_count?: number;
 
+  correct?: number;
+  incorrect?: number;
+  uncertain?: number;
+  pending?: number;
+  reviewed?: number;
+  accepted?: number;
+  rejected?: number;
+
+  agreement_rate?: number | null;
+
+  // Older response compatibility
   correct_feedback?: number;
   incorrect_feedback?: number;
   pending_feedback?: number;
