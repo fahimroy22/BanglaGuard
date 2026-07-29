@@ -12,8 +12,13 @@ from app.schemas.model_version import (
     ModelVersionRead,
 )
 from app.api.dependencies import (
+
+    get_current_user,
+
     require_admin,
+
     require_researcher_or_admin,
+
 )
 from app.db.models import ModelVersion, User
 
@@ -49,7 +54,7 @@ async def create_model_version(
 )
 async def list_model_versions(
     current_user: User = Depends(
-        require_researcher_or_admin
+        get_current_user
     ),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[ModelVersion]:
