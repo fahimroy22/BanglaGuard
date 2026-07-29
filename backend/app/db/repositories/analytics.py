@@ -605,6 +605,11 @@ class AnalyticsRepository:
             Text,
         )
 
+        configuration_as_text = cast(
+            ModelVersion.configuration,
+            Text,
+        )
+
         verdict_text = func.lower(
             cast(
                 Feedback.verdict,
@@ -623,6 +628,9 @@ class AnalyticsRepository:
                 ModelVersion.version.label(
                     "model_version"
                 ),
+                ModelVersion.task.label(
+                    "task"
+                ),
                 ModelVersion.architecture.label(
                     "architecture"
                 ),
@@ -631,6 +639,9 @@ class AnalyticsRepository:
                 ),
                 metrics_as_text.label(
                     "registered_metrics_json"
+                ),
+                configuration_as_text.label(
+                    "registered_configuration_json"
                 ),
                 func.count(
                     func.distinct(
@@ -697,9 +708,11 @@ class AnalyticsRepository:
                 ModelVersion.id,
                 ModelVersion.name,
                 ModelVersion.version,
+                ModelVersion.task,
                 ModelVersion.architecture,
                 ModelVersion.status,
                 metrics_as_text,
+                configuration_as_text,
             )
             .order_by(
                 func.count(
@@ -763,6 +776,43 @@ class AnalyticsRepository:
                 ):
                     registered_metrics = {}
 
+            registered_configuration: dict[
+                str,
+                Any,
+            ] = {}
+
+            if row.registered_configuration_json:
+                try:
+                    decoded_configuration = (
+                        json.loads(
+                            row.registered_configuration_json
+                        )
+                    )
+
+                    if isinstance(
+                        decoded_configuration,
+                        dict,
+                    ):
+                        registered_configuration = (
+                            decoded_configuration
+                        )
+
+                except (
+                    json.JSONDecodeError,
+                    TypeError,
+                ):
+                    registered_configuration = {}
+
+            task_value = row.task
+
+            if hasattr(
+                task_value,
+                "value",
+            ):
+                task_value = (
+                    task_value.value
+                )
+
             status_value = row.status
 
             if hasattr(
@@ -783,6 +833,9 @@ class AnalyticsRepository:
                     ),
                     "model_version": (
                         row.model_version
+                    ),
+                    "task": str(
+                        task_value
                     ),
                     "architecture": (
                         row.architecture
@@ -825,6 +878,9 @@ class AnalyticsRepository:
                     ),
                     "registered_metrics": (
                         registered_metrics
+                    ),
+                    "registered_configuration": (
+                        registered_configuration
                     ),
                 }
             )

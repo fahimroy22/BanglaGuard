@@ -127,8 +127,12 @@ function formatLatency(
 }
 
 function formatWords(
-  value: string,
+  value?: string | null,
 ): string {
+  if (!value) {
+    return "—";
+  }
+
   return value
     .replaceAll("_", " ")
     .replaceAll("-", " ")
@@ -1647,6 +1651,12 @@ function ResearchEvaluationPanel({
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {formatWords(
+              selectedItem.task,
+            )}
+          </Badge>
+
+          <Badge variant="outline">
+            {formatWords(
               selectedItem.architecture,
             )}
           </Badge>
@@ -1769,6 +1779,16 @@ function ResearchEvaluationPanel({
           <div className="border-t p-5 sm:p-6">
             <ClassificationReportTable
               rows={classRows}
+            />
+          </div>
+
+          <div className="border-t p-5 sm:p-6">
+            <TrainingConfigurationCard
+              configuration={
+                selectedItem
+                  .registered_configuration ??
+                {}
+              }
             />
           </div>
         </>
@@ -2160,6 +2180,228 @@ function ClassificationReportTable({
         </div>
       ) : (
         <EmptyBlock message="No per-class classification report was registered." />
+      )}
+    </section>
+  );
+}
+
+
+function formatConfigurationValue(
+  value: unknown,
+): string {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "—";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (
+    typeof value === "number"
+  ) {
+    if (
+      Math.abs(value) > 0 &&
+      Math.abs(value) < 0.001
+    ) {
+      return value.toExponential(2);
+    }
+
+    return new Intl.NumberFormat(
+      "en-US",
+      {
+        maximumFractionDigits: 6,
+      },
+    ).format(value);
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(
+        formatConfigurationValue,
+      )
+      .join(", ");
+  }
+
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .map(
+        ([key, nestedValue]) =>
+          `${formatWords(
+            key,
+          )}: ${formatConfigurationValue(
+            nestedValue,
+          )}`,
+      )
+      .join(" · ");
+  }
+
+  return String(value);
+}
+
+function getConfigurationLabel(
+  key: string,
+): string {
+  const labels: Record<
+    string,
+    string
+  > = {
+    base_model: "Base model",
+    epochs: "Epochs",
+    train_batch_size:
+      "Training batch size",
+    eval_batch_size:
+      "Evaluation batch size",
+    learning_rate:
+      "Learning rate",
+    random_seed:
+      "Random seed",
+    max_length:
+      "Maximum sequence length",
+    labels: "Class labels",
+    class_weight:
+      "Class weighting",
+    word_ngram_range:
+      "Word n-gram range",
+    character_ngram_range:
+      "Character n-gram range",
+    training_samples:
+      "Training samples",
+    validation_samples:
+      "Validation samples",
+    test_samples:
+      "Test samples",
+    dataset_directory:
+      "Dataset directory",
+    type: "Model type",
+  };
+
+  return (
+    labels[key] ??
+    formatWords(key)
+  );
+}
+
+function TrainingConfigurationCard({
+  configuration,
+}: {
+  configuration?:
+    | UnknownRecord
+    | null;
+}) {
+  const safeConfiguration =
+    isRecord(configuration)
+      ? configuration
+      : {};
+
+  const entries = Object.entries(
+    safeConfiguration,
+  );
+
+  const priority = [
+    "base_model",
+    "type",
+    "epochs",
+    "train_batch_size",
+    "eval_batch_size",
+    "learning_rate",
+    "random_seed",
+    "max_length",
+    "class_weight",
+    "word_ngram_range",
+    "character_ngram_range",
+    "labels",
+    "training_samples",
+    "validation_samples",
+    "test_samples",
+    "dataset_directory",
+  ];
+
+  const priorityMap = new Map(
+    priority.map(
+      (key, index) => [
+        key,
+        index,
+      ],
+    ),
+  );
+
+  const sortedEntries = [
+    ...entries,
+  ].sort(([left], [right]) => {
+    const leftPriority =
+      priorityMap.get(left) ??
+      Number.MAX_SAFE_INTEGER;
+
+    const rightPriority =
+      priorityMap.get(right) ??
+      Number.MAX_SAFE_INTEGER;
+
+    if (
+      leftPriority !== rightPriority
+    ) {
+      return (
+        leftPriority -
+        rightPriority
+      );
+    }
+
+    return left.localeCompare(
+      right,
+    );
+  });
+
+  return (
+    <section>
+      <div>
+        <h3 className="font-semibold">
+          Training configuration
+        </h3>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          Reproducibility metadata
+          registered with this model
+          version.
+        </p>
+      </div>
+
+      {sortedEntries.length > 0 ? (
+        <dl className="mt-5 grid overflow-hidden rounded-2xl border sm:grid-cols-2 xl:grid-cols-3">
+          {sortedEntries.map(
+            ([key, value]) => (
+              <div
+                key={key}
+                className="border-b p-4 last:border-b-0 sm:border-r"
+              >
+                <dt className="text-xs font-medium text-muted-foreground">
+                  {getConfigurationLabel(
+                    key,
+                  )}
+                </dt>
+
+                <dd
+                  className="mt-2 break-words text-sm font-semibold"
+                  title={formatConfigurationValue(
+                    value,
+                  )}
+                >
+                  {formatConfigurationValue(
+                    value,
+                  )}
+                </dd>
+              </div>
+            ),
+          )}
+        </dl>
+      ) : (
+        <EmptyBlock message="No training configuration was registered for this model." />
       )}
     </section>
   );

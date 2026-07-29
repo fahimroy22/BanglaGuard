@@ -113,6 +113,7 @@ async def export_model_comparison_csv(
         "model_version_id",
         "model_name",
         "model_version",
+        "task",
         "architecture",
         "status",
         "prediction_count",

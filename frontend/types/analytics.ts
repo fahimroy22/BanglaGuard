@@ -74,6 +74,7 @@ export type ModelComparisonItem = {
   model_version_id: string;
   model_name: string;
   model_version: string;
+  task: string;
   architecture: string;
   status: string;
 
@@ -88,6 +89,11 @@ export type ModelComparisonItem = {
   observed_feedback_accuracy: number | null;
 
   registered_metrics: Record<
+    string,
+    unknown
+  >;
+
+  registered_configuration?: Record<
     string,
     unknown
   >;

@@ -67,6 +67,7 @@ class ModelComparisonItem(ORMModel):
     model_version_id: str
     model_name: str
     model_version: str
+    task: str
     architecture: str
     status: str
 
@@ -81,5 +82,12 @@ class ModelComparisonItem(ORMModel):
     observed_feedback_accuracy: float | None
 
     registered_metrics: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    registered_configuration: dict[
+        str,
+        Any,
+    ] = Field(
         default_factory=dict
     )
