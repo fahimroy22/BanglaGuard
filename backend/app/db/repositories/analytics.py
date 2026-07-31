@@ -22,6 +22,68 @@ from app.db.models import (
 from app.domain.enums import PredictionStatus
 
 
+
+def _sanitize_release_value(
+    value: Any,
+) -> Any:
+    """Remove machine-specific paths from public analytics responses."""
+
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_release_value(
+                nested_value
+            )
+            for key, nested_value
+            in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            _sanitize_release_value(
+                item
+            )
+            for item in value
+        ]
+
+    if not isinstance(value, str):
+        return value
+
+    normalized = value.replace(
+        "\\",
+        "/",
+    )
+
+    project_markers = (
+        "/research/",
+        "/storage/",
+        "/backend/",
+        "/frontend/",
+        "/docs/",
+    )
+
+    for project_marker in project_markers:
+        marker_index = normalized.find(
+            project_marker
+        )
+
+        if marker_index >= 0:
+            return normalized[
+                marker_index + 1:
+            ]
+
+    if normalized.startswith(
+        (
+            "/Users/",
+            "/home/",
+        )
+    ):
+        return normalized.rstrip(
+            "/"
+        ).split("/")[-1]
+
+    return value
+
+
 class AnalyticsRepository:
     def __init__(
         self,
@@ -880,7 +942,9 @@ class AnalyticsRepository:
                         registered_metrics
                     ),
                     "registered_configuration": (
-                        registered_configuration
+                        _sanitize_release_value(
+                            registered_configuration
+                        )
                     ),
                 }
             )

@@ -17,7 +17,7 @@ from app.core.exceptions import (
 )
 from app.core.rate_limit import limiter
 from app.core.redis import close_redis
-from app.core.request_context import (
+from app.core.middleware import (
     RequestContextMiddleware,
 )
 

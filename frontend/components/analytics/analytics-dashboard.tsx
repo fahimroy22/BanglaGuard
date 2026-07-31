@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  downloadModelComparisonCsv,
+  downloadResearchAnalyticsZip,
   getAnalyticsDashboard,
   getModelComparison,
 } from "@/lib/analytics";
@@ -354,13 +354,13 @@ export function AnalyticsDashboard() {
     setIsExporting(true);
 
     try {
-      await downloadModelComparisonCsv();
+      await downloadResearchAnalyticsZip();
 
       toast.success(
-        "Model comparison exported.",
+        "Research analytics exported.",
         {
           description:
-            "The CSV report has been downloaded.",
+            "The ZIP research package has been downloaded.",
         },
       );
     } catch (error) {
@@ -722,7 +722,7 @@ function AnalyticsHeader({
               ) : (
                 <Download className="size-4" />
               )}
-              Export CSV
+              Export research ZIP
             </Button>
           </div>
         </div>

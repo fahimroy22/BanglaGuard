@@ -50,7 +50,7 @@ function getFilename(
     | undefined,
 ): string {
   if (!contentDisposition) {
-    return "model-comparison.csv";
+    return "banglaguard-research-analytics.zip";
   }
 
   const filenameMatch =
@@ -60,13 +60,13 @@ function getFilename(
 
   return (
     filenameMatch?.[1] ??
-    "model-comparison.csv"
+    "banglaguard-research-analytics.zip"
   );
 }
 
-export async function downloadModelComparisonCsv(): Promise<void> {
+export async function downloadResearchAnalyticsZip(): Promise<void> {
   const response = await api.get<Blob>(
-    "/analytics/reports/model-comparison.csv",
+    "/analytics/reports/research-analytics.zip",
     {
       responseType: "blob",
     },
