@@ -1,0 +1,6 @@
+# BanglaGuard backend dependencies. Use Python 3.14 in a virtual environment.
+# Supported local setup: macOS or Windows with WSL 2 (Linux).
+# Run from the repository root: python -m pip install -r requirements.txt
+# Install Git first: the Bangla normalizer is pinned to an upstream commit.
+# Frontend dependencies are installed separately with npm ci in frontend/.
+-r backend/requirements.txt

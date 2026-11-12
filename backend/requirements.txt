@@ -1,3 +1,6 @@
+# Pinned backend environment for Python 3.14 (macOS and Linux/WSL 2).
+# Used by backend/Dockerfile; keep this file self-contained.
+
 accelerate==1.14.0
 aiofiles==25.1.0
 aiohappyeyeballs==2.7.1
@@ -104,7 +107,7 @@ typing-inspection==0.4.2
 typing_extensions==4.16.0
 urllib3==2.7.0
 uvicorn==0.51.0
-uvloop==0.22.1
+uvloop==0.22.1 ; sys_platform != "win32"
 watchfiles==1.2.0
 wcwidth==0.8.2
 websockets==16.1.1
