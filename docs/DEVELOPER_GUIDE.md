@@ -233,7 +233,7 @@ sequenceDiagram
     participant UI as Prediction page
     participant API as FastAPI
     participant R as Registry and storage
-    U->>UI: Select task and model; enter text
+    U->>UI: Select a task and model, then enter text
     UI->>API: Submit prediction request
     API->>R: Resolve task-compatible active model or allowed candidate
     R-->>API: Version and artifact path
