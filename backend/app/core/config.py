@@ -5,7 +5,6 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
@@ -45,8 +44,16 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     model_storage_path: str = "storage/models"
+    experiment_storage_path: str = "storage/experiments"
     upload_storage_path: str = "storage/uploads"
     report_storage_path: str = "storage/reports"
+
+    # User profile avatar storage
+    profile_avatar_max_bytes: int = 5 * 1024 * 1024
+
+    dataset_inspection_max_bytes: int = 50 * 1024 * 1024
+    dataset_inspection_preview_rows: int = 10
+    dataset_inspection_ttl_minutes: int = 60
 
     @field_validator(
         "cors_origins",
@@ -76,9 +83,7 @@ class Settings(BaseSettings):
                 parsed_value = json.loads(value)
 
                 if not isinstance(parsed_value, list):
-                    raise ValueError(
-                        "CORS_ORIGINS must be a list"
-                    )
+                    raise ValueError("CORS_ORIGINS must be a list")
 
                 return [
                     str(origin).strip()
@@ -86,23 +91,12 @@ class Settings(BaseSettings):
                     if str(origin).strip()
                 ]
 
-            return [
-                origin.strip()
-                for origin in value.split(",")
-                if origin.strip()
-            ]
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
 
         if isinstance(value, (list, tuple, set)):
-            return [
-                str(origin).strip()
-                for origin in value
-                if str(origin).strip()
-            ]
+            return [str(origin).strip() for origin in value if str(origin).strip()]
 
-        raise ValueError(
-            "CORS_ORIGINS must be a comma-separated "
-            "string or a list"
-        )
+        raise ValueError("CORS_ORIGINS must be a comma-separated string or a list")
 
     model_config = SettingsConfigDict(
         env_file=ROOT_DIR / ".env",

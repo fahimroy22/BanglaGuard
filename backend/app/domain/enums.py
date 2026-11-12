@@ -47,3 +47,15 @@ class BatchJobStatus(StrEnum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class DatasetExportStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DatasetExportFormat(StrEnum):
+    CSV = "csv"
+    JSONL = "jsonl"

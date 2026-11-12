@@ -58,7 +58,7 @@ export function RegisterForm() {
     values: RegisterFormValues,
   ) {
     try {
-      await registerUser({
+      const account = await registerUser({
         full_name: values.full_name.trim(),
         email: values.email.trim().toLowerCase(),
         password: values.password,
@@ -66,11 +66,11 @@ export function RegisterForm() {
 
       toast.success("Account created successfully.", {
         description:
-          "You can now sign in to BanglaGuard.",
+          account.is_active ? "You can now sign in to BanglaGuard." : "Your account needs administrator approval before you can sign in.",
       });
 
       router.push(
-        `/auth/login?registered=1&email=${encodeURIComponent(
+        `/auth/login?registered=${account.is_active ? "1" : "pending"}&email=${encodeURIComponent(
           values.email.trim().toLowerCase(),
         )}`,
       );

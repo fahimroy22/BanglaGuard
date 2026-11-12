@@ -1,15 +1,8 @@
-export type AnalysisTask =
-  | "hate_speech"
-  | "sentiment";
+export type AnalysisTask = "hate_speech" | "sentiment";
 
-export type PredictionStatus =
-  | "completed"
-  | "failed";
+export type PredictionStatus = "completed" | "failed";
 
-export type ModelStatus =
-  | "draft"
-  | "active"
-  | "retired";
+export type ModelStatus = "draft" | "active" | "retired";
 
 export type PredictionRequest = {
   text: string;
@@ -40,7 +33,18 @@ export type PredictionRead = {
   updated_at: string;
 };
 
+// PHASE 22.5.5B.1: MODEL ACTIVATION READINESS
+export type ModelActivationReadinessRead = {
+  model_version_id: string;
+  task: AnalysisTask;
+  architecture: string;
+  status: ModelStatus;
+  ready: boolean;
+  reason: string | null;
+};
+
 export type ModelVersionRead = {
+  is_archived?: boolean;
   id: string;
   name: string;
   version: string;

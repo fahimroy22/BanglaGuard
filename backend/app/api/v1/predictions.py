@@ -1,3 +1,8 @@
+from __future__ import annotations
+from app.domain.services.platform_policy import require_permission
+
+# FastAPI intentionally uses Depends and Query in parameter defaults.
+# ruff: noqa: B008
 import uuid
 
 from fastapi import (
@@ -15,6 +20,7 @@ from app.core.rate_limit import limiter
 from app.db.models import Prediction, User
 from app.db.repositories.prediction import PredictionRepository
 from app.db.session import get_db_session
+from app.domain.services.audit import AuditService
 from app.domain.services.prediction import (
     ActiveModelNotFoundError,
     PredictionService,
@@ -25,7 +31,6 @@ from app.schemas.prediction import (
     PredictionRead,
     PredictionRequest,
 )
-
 
 router = APIRouter(
     prefix="/predictions",
@@ -42,13 +47,13 @@ router = APIRouter(
 async def create_prediction(
     request: Request,
     payload: PredictionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("prediction_run")),
     session: AsyncSession = Depends(get_db_session),
 ) -> Prediction:
     service = PredictionService(session)
 
     try:
-        return await service.predict(
+        prediction = await service.predict(
             payload=payload,
             user=current_user,
         )
@@ -57,8 +62,7 @@ async def create_prediction(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "No suitable model version is available "
-                "for the selected analysis task"
+                "No suitable model version is available for the selected analysis task"
             ),
         ) from exc
 
@@ -67,6 +71,27 @@ async def create_prediction(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+
+    audit_service = AuditService(session)
+
+    await audit_service.record(
+        request=request,
+        action="prediction.created",
+        user_id=current_user.id,
+        resource_type="prediction",
+        resource_id=str(prediction.id),
+        details={
+            "task": getattr(
+                prediction.task,
+                "value",
+                str(prediction.task),
+            ),
+            "model_version_id": str(prediction.model_version_id),
+            "include_explanation": payload.include_explanation,
+        },
+    )
+
+    return prediction
 
 
 @router.post(
@@ -78,13 +103,13 @@ async def create_prediction(
 async def create_batch_prediction(
     request: Request,
     payload: BatchPredictionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("prediction_run")),
     session: AsyncSession = Depends(get_db_session),
 ) -> BatchPredictionResponse:
     service = PredictionService(session)
 
     try:
-        return await service.predict_batch(
+        result = await service.predict_batch(
             payload=payload,
             user=current_user,
         )
@@ -92,10 +117,7 @@ async def create_batch_prediction(
     except ActiveModelNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "No suitable active model is available "
-                "for the selected task"
-            ),
+            detail=("No suitable active model is available for the selected task"),
         ) from exc
 
     except RuntimeError as exc:
@@ -103,6 +125,30 @@ async def create_batch_prediction(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+
+    audit_service = AuditService(session)
+
+    await audit_service.record(
+        request=request,
+        action="prediction.batch_created",
+        user_id=current_user.id,
+        resource_type="prediction_batch",
+        resource_id=None,
+        details={
+            "task": getattr(
+                result.task,
+                "value",
+                str(result.task),
+            ),
+            "model_version_id": str(result.model_version_id),
+            "total_items": result.total_items,
+            "completed_items": result.completed_items,
+            "failed_items": result.failed_items,
+            "include_explanation": payload.include_explanation,
+        },
+    )
+
+    return result
 
 
 @router.get(

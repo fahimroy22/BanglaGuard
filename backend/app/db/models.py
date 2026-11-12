@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,6 +20,8 @@ from app.db.base import Base, TimestampMixin
 from app.domain.enums import (
     AnalysisTask,
     BatchJobStatus,
+    DatasetExportFormat,
+    DatasetExportStatus,
     ExperimentStatus,
     FeedbackStatus,
     FeedbackVerdict,
@@ -66,6 +69,11 @@ class User(TimestampMixin, Base):
         nullable=False,
     )
 
+    avatar_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
     predictions: Mapped[list["Prediction"]] = relationship(
         back_populates="user",
     )
@@ -77,6 +85,11 @@ class User(TimestampMixin, Base):
 
     batch_jobs: Mapped[list["BatchJob"]] = relationship(
         back_populates="user",
+    )
+
+    dataset_exports: Mapped[list["DatasetExport"]] = relationship(
+        back_populates="created_by",
+        foreign_keys="DatasetExport.created_by_id",
     )
 
 
@@ -101,6 +114,7 @@ class DatasetVersion(TimestampMixin, Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     source_name: Mapped[str | None] = mapped_column(
@@ -164,8 +178,139 @@ class DatasetVersion(TimestampMixin, Base):
         back_populates="dataset_version",
     )
 
+    exports: Mapped[list["DatasetExport"]] = relationship(
+        back_populates="dataset_version",
+    )
+
+
+class DatasetExport(TimestampMixin, Base):
+    __tablename__ = "dataset_exports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+        ),
+        index=True,
+    )
+
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "dataset_versions.id",
+            ondelete="SET NULL",
+        ),
+        index=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+    )
+
+    version: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    task: Mapped[AnalysisTask] = mapped_column(
+        Enum(
+            AnalysisTask,
+            name="dataset_export_analysis_task",
+        ),
+        nullable=False,
+    )
+
+    export_format: Mapped[DatasetExportFormat] = mapped_column(
+        Enum(
+            DatasetExportFormat,
+            name="dataset_export_format",
+        ),
+        default=DatasetExportFormat.CSV,
+        nullable=False,
+    )
+
+    status: Mapped[DatasetExportStatus] = mapped_column(
+        Enum(
+            DatasetExportStatus,
+            name="dataset_export_status",
+        ),
+        default=DatasetExportStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+
+    selected_records: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    exported_records: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    skipped_records: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    selected_feedback_ids: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=list,
+        nullable=False,
+    )
+
+    artifact_path: Mapped[str | None] = mapped_column(
+        String(500),
+    )
+
+    manifest_path: Mapped[str | None] = mapped_column(
+        String(500),
+    )
+
+    checksum: Mapped[str | None] = mapped_column(
+        String(128),
+    )
+
+    configuration: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        default=dict,
+        nullable=False,
+    )
+
+    error_message: Mapped[str | None] = mapped_column(
+        Text,
+    func,
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    created_by: Mapped["User | None"] = relationship(
+        back_populates="dataset_exports",
+        foreign_keys=[created_by_id],
+    )
+
+    dataset_version: Mapped["DatasetVersion | None"] = relationship(
+        back_populates="exports",
+    )
+
 
 class ModelVersion(TimestampMixin, Base):
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
     __tablename__ = "model_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -256,6 +401,7 @@ class Experiment(TimestampMixin, Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     status: Mapped[ExperimentStatus] = mapped_column(
@@ -342,10 +488,12 @@ class Prediction(TimestampMixin, Base):
 
     input_text: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     normalized_text: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     language_form: Mapped[str | None] = mapped_column(
@@ -376,6 +524,7 @@ class Prediction(TimestampMixin, Base):
 
     error_message: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     user: Mapped["User | None"] = relationship(
@@ -435,10 +584,12 @@ class Feedback(TimestampMixin, Base):
 
     comment: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     reviewer_note: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     reviewed_at: Mapped[datetime | None] = mapped_column(
@@ -518,6 +669,7 @@ class BatchJob(TimestampMixin, Base):
 
     error_message: Mapped[str | None] = mapped_column(
         Text,
+    func,
     )
 
     started_at: Mapped[datetime | None] = mapped_column(
@@ -531,6 +683,7 @@ class BatchJob(TimestampMixin, Base):
     user: Mapped["User | None"] = relationship(
         back_populates="batch_jobs",
     )
+
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -581,6 +734,7 @@ class AuditLog(Base):
 
     user_agent: Mapped[str | None] = mapped_column(
         Text,
+    func,
         nullable=True,
     )
 
@@ -596,3 +750,11 @@ class AuditLog(Base):
         default=datetime.utcnow,
         index=True,
     )
+
+
+class PlatformPolicyRecord(Base):
+    __tablename__ = "platform_policy_records"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

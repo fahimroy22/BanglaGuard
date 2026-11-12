@@ -26,6 +26,9 @@ from app.core.middleware import (
 async def lifespan(
     app: FastAPI,
 ) -> AsyncIterator[None]:
+    from app.domain.services.training_jobs import JobStore, wake_worker
+    if JobStore().list(active=True, limit=1):
+        wake_worker()
     yield
     await close_redis()
 

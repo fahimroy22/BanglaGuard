@@ -1,7 +1,7 @@
-export default function Page() {
-  return (
-    <main>
-      <h1>feedback</h1>
-    </main>
-  );
+import {
+  FeedbackWorkspace,
+} from "@/components/feedback/feedback-workspace";
+
+export default function FeedbackPage() {
+  return <FeedbackWorkspace />;
 }

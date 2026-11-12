@@ -28,17 +28,18 @@ def verify_password(
 def create_access_token(
     user_id: uuid.UUID,
     role: str,
+    expires_minutes: int | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
 
     expires_at = now + timedelta(
-        minutes=settings.access_token_expire_minutes,
+        minutes=expires_minutes if expires_minutes is not None else settings.access_token_expire_minutes,
     )
 
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
-        "iat": now,
+        "iat": now.timestamp(),
         "exp": expires_at,
         "type": "access",
     }

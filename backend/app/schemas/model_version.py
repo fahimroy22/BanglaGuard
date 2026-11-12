@@ -22,8 +22,18 @@ class ModelVersionCreate(ORMModel):
 
 
 class ModelVersionRead(ModelVersionCreate):
+    is_archived: bool = False
     id: uuid.UUID
     status: ModelStatus
     activated_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class ModelActivationReadinessRead(ORMModel):
+    model_version_id: uuid.UUID
+    task: AnalysisTask
+    architecture: str
+    status: ModelStatus
+    ready: bool
+    reason: str | None = None

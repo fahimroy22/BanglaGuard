@@ -5,6 +5,8 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db.models import AuditLog
 
 from app.core.security import decode_access_token
 from app.db.models import User
@@ -49,6 +51,16 @@ async def get_current_user(
     user = await repository.get_active_by_id(user_id)
 
     if user is None:
+        raise credentials_error
+
+    revoked_at = await session.scalar(
+        select(AuditLog.created_at).where(
+            AuditLog.action == "admin.sessions_revoked",
+            AuditLog.resource_type == "user",
+            AuditLog.resource_id == str(user.id),
+        ).order_by(AuditLog.created_at.desc()).limit(1)
+    )
+    if revoked_at is not None and float(payload["iat"]) <= revoked_at.timestamp():
         raise credentials_error
 
     return user

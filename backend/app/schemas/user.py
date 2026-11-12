@@ -14,6 +14,16 @@ class UserCreate(ORMModel):
     role: UserRole = UserRole.USER
 
 
+class UserUpdate(ORMModel):
+    full_name: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=150,
+    )
+
+    email: EmailStr | None = None
+
+
 class UserRead(ORMModel):
     id: uuid.UUID
     email: EmailStr
@@ -22,3 +32,8 @@ class UserRead(ORMModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class AvatarUpdateResponse(ORMModel):
+    message: str
+    has_avatar: bool

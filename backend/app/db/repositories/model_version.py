@@ -9,9 +9,7 @@ from app.db.repositories.base import BaseRepository
 from app.domain.enums import AnalysisTask, ModelStatus
 
 
-class ModelVersionRepository(
-    BaseRepository[ModelVersion]
-):
+class ModelVersionRepository(BaseRepository[ModelVersion]):
     def __init__(
         self,
         session: AsyncSession,
@@ -28,6 +26,7 @@ class ModelVersionRepository(
         statement = select(ModelVersion).where(
             ModelVersion.task == task,
             ModelVersion.status == ModelStatus.ACTIVE,
+            ModelVersion.is_archived.is_(False),
         )
 
         result = await self.session.scalars(statement)
@@ -38,22 +37,40 @@ class ModelVersionRepository(
         self,
         model_version_id: uuid.UUID,
     ) -> ModelVersion | None:
-        model_version = await self.get(
-            model_version_id
+        target_statement = (
+            select(ModelVersion)
+            .where(ModelVersion.id == model_version_id)
+            .with_for_update()
         )
+
+        result = await self.session.scalars(target_statement)
+
+        model_version = result.first()
 
         if model_version is None:
             return None
 
+        task_lock_statement = (
+            select(ModelVersion.id)
+            .where(ModelVersion.task == model_version.task)
+            .with_for_update()
+        )
+
+        await self.session.execute(task_lock_statement)
+
+        if model_version.is_archived:
+            raise ValueError("Restore this archived model before activating it.")
+
+        if model_version.status == ModelStatus.ACTIVE:
+            return model_version
+
         await self.session.execute(
             update(ModelVersion)
             .where(
-                ModelVersion.task
-                == model_version.task,
-                ModelVersion.id
-                != model_version.id,
-                ModelVersion.status
-                == ModelStatus.ACTIVE,
+                ModelVersion.task == model_version.task,
+                ModelVersion.id != model_version.id,
+                ModelVersion.status == ModelStatus.ACTIVE,
+            ModelVersion.is_archived.is_(False),
             )
             .values(
                 status=ModelStatus.RETIRED,
@@ -61,11 +78,24 @@ class ModelVersionRepository(
         )
 
         model_version.status = ModelStatus.ACTIVE
-        model_version.activated_at = datetime.now(
-            timezone.utc
-        )
+
+        model_version.activated_at = datetime.now(timezone.utc)
 
         await self.session.commit()
         await self.session.refresh(model_version)
 
         return model_version
+
+    async def set_archived(self, model_version_id: uuid.UUID, archived: bool):
+        result = await self.session.scalars(
+            select(ModelVersion).where(ModelVersion.id == model_version_id)
+            .with_for_update().execution_options(populate_existing=True)
+        )
+        model = result.first()
+        if model is None:
+            return None
+        if archived and model.status == ModelStatus.ACTIVE:
+            raise ValueError("Activate another model for this task before archiving the active model.")
+        model.is_archived = archived
+        await self.session.flush()
+        return model

@@ -104,3 +104,25 @@ __pycache__/
 !storage/uploads/.gitkeep
 !storage/reports/.gitkeep
 !storage/models/.gitkeep
+
+# Local research runs, exports, and work-in-progress snapshots
+/storage/*
+!/storage/models/
+!/storage/uploads/
+!/storage/reports/
+/archive/
+/inspection/
+/phase-*
+backups/
+*.bak
+*.bak-*
+*.backup
+*.before-*
+*.pre-token-attribution
+*_inspection.txt
+*.joblib
+*.safetensors
+*.sqlite3
+!.env.production.example
+
+/backend/*_inspection.zip

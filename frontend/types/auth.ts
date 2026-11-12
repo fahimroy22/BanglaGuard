@@ -1,7 +1,4 @@
-export type UserRole =
-  | "admin"
-  | "researcher"
-  | "user";
+export type UserRole = "admin" | "researcher" | "user";
 
 export type User = {
   id: string;
@@ -42,4 +39,23 @@ export type ApiErrorResponse = {
   detail?: string;
   message?: string;
   error?: string;
+};
+
+export type UpdateProfileRequest = {
+  full_name?: string;
+  email?: string;
+};
+
+export type ChangePasswordRequest = {
+  current_password: string;
+  new_password: string;
+};
+
+export type ChangePasswordResponse = {
+  message: string;
+};
+
+export type AvatarUpdateResponse = {
+  message: string;
+  has_avatar: boolean;
 };

@@ -1,6 +1,7 @@
 from app.db.base import Base
 from app.db.models import (
     BatchJob,
+    DatasetExport,
     DatasetVersion,
     Experiment,
     Feedback,
@@ -13,6 +14,7 @@ __all__ = [
     "Base",
     "User",
     "DatasetVersion",
+    "DatasetExport",
     "ModelVersion",
     "Experiment",
     "Prediction",

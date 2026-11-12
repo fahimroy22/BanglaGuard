@@ -9,6 +9,8 @@ import {
   Layers3,
   X,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api, getApiErrorMessage } from "@/lib/api";
 import { useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -166,6 +168,7 @@ export function ModelComparisonPanel({
   open,
   onClose,
 }: ModelComparisonPanelProps) {
+  const evidence = useQuery({queryKey:["model-comparison-evidence",models[0]?.id,models[1]?.id],queryFn:async()=>(await api.get<{comparable:boolean;concerns:string[]}>(`/model-promotion/${models[0].id}/compare/${models[1].id}`)).data,enabled:open&&models.length===2,retry:false});
   useEffect(() => {
     if (!open) {
       return;
@@ -596,13 +599,8 @@ export function ModelComparisonPanel({
               />
 
               <div className="mt-4 rounded-2xl border bg-muted/20 p-5 text-sm leading-7 text-muted-foreground">
-                A higher metric does not automatically prove
-                that one model is generally superior. The
-                current registered evaluations use extremely
-                small validation and test splits. These scores
-                demonstrate that the evaluation pipeline works,
-                but they are not reliable enough for publication
-                claims or real moderation decisions.
+                <p>A higher metric does not establish that a model is generally superior. Review the data, class-specific errors, uncertainty and intended use.</p>
+                {evidence.isFetching ? <p>Checking evaluation compatibility…</p> : evidence.isError ? <p>{getApiErrorMessage(evidence.error,"Compatibility evidence unavailable.")}</p> : evidence.data && <div><strong>{evidence.data.comparable?"Evaluation data match":"Comparison limitations"}</strong>{evidence.data.concerns.map(c=><p key={c}>{c}</p>)}</div>}
               </div>
             </section>
           </div>

@@ -264,6 +264,8 @@ export function AnalyticsDashboard() {
     (state) => state.user,
   );
 
+  const [view, setView] = useState<"overview" | "evaluation" | "models">("overview");
+
   const [dateRange, setDateRange] =
     useState<DateRangeOption>("30");
 
@@ -340,14 +342,9 @@ export function AnalyticsDashboard() {
     );
 
   async function handleRefresh() {
-    await Promise.all([
-      dashboardQuery.refetch(),
-      comparisonQuery.refetch(),
-    ]);
-
-    toast.success(
-      "Analytics refreshed.",
-    );
+    const results = await Promise.all([dashboardQuery.refetch(), comparisonQuery.refetch()]);
+    if (results.some(result => result.isError)) toast.error("Some analytics could not refresh.");
+    else toast.success("Analytics refreshed.");
   }
 
   async function handleExport() {
@@ -382,12 +379,12 @@ export function AnalyticsDashboard() {
   if (isForbidden) {
     return (
       <main className="p-4 sm:p-6 lg:p-8">
-        <section className="mx-auto max-w-4xl rounded-3xl border bg-background p-6 sm:p-10">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+        <section className="mx-auto max-w-4xl gh-panel p-6 sm:p-10">
+          <div className="flex size-12 items-center justify-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
             <ShieldAlert className="size-6" />
           </div>
 
-          <h1 className="mt-6 text-3xl font-bold">
+          <h1 className="mt-6 text-2xl font-semibold">
             Research analytics access
           </h1>
 
@@ -403,7 +400,7 @@ export function AnalyticsDashboard() {
             .
           </p>
 
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
             Ask an administrator to change
             your role to{" "}
             <strong>researcher</strong> or{" "}
@@ -432,12 +429,12 @@ export function AnalyticsDashboard() {
 
     return (
       <main className="p-4 sm:p-6 lg:p-8">
-        <section className="mx-auto max-w-4xl rounded-3xl border bg-background p-6 sm:p-10">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <section className="mx-auto max-w-4xl gh-panel p-6 sm:p-10">
+          <div className="flex size-12 items-center justify-center rounded-lg bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">
             <AlertCircle className="size-6" />
           </div>
 
-          <h1 className="mt-6 text-3xl font-bold">
+          <h1 className="mt-6 text-2xl font-semibold">
             Analytics could not load
           </h1>
 
@@ -464,7 +461,7 @@ export function AnalyticsDashboard() {
     dashboardQuery.data;
 
   const comparison =
-    comparisonQuery.data ?? [];
+    (comparisonQuery.data ?? []).filter(item => task === "all" || item.task === task);
 
   const selectedEvaluationModel =
     comparison.find(
@@ -504,7 +501,7 @@ export function AnalyticsDashboard() {
       : 0;
 
   return (
-    <main className="space-y-6 p-4 sm:p-6 lg:p-8">
+    <main className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 lg:px-6">
       <AnalyticsHeader
         dateRange={dateRange}
         task={task}
@@ -521,131 +518,37 @@ export function AnalyticsDashboard() {
         onExport={handleExport}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total predictions"
-          value={formatNumber(
-            summary.total_predictions,
-          )}
-          description={`${formatPercentage(
-            completionRate,
-          )} completed`}
-          icon={Activity}
-        />
+      <nav aria-label="Analytics sections" className="flex gap-1 overflow-x-auto border-b pb-3">
+        {([["overview", "Overview"], ["evaluation", "Model evaluation"], ["models", "Model activity"]] as const).map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={view === key} className={`gh-button whitespace-nowrap ${view === key ? "gh-button-primary" : ""}`} onClick={() => setView(key)}>{label}</button>
+        ))}
+      </nav>
+      {view === "overview" && <>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Prediction summary">
+          <StatCard label="Total predictions" value={formatNumber(summary.total_predictions)} description={`${completionRate.toFixed(1)}% completed`} icon={Activity} />
+          <StatCard label="Average confidence" value={formatPercentage(summary.average_confidence)} description="Model confidence, not measured accuracy" icon={Gauge} />
+          <StatCard label="Average latency" value={formatLatency(summary.average_latency_ms)} description="Mean model response time" icon={Clock3} />
+          <StatCard label="Human feedback" value={formatNumber(feedbackTotal)} description={`Reviewer agreement ${formatPercentage(feedbackAccuracy)}`} icon={MessageSquareText} />
+        </section>
+        <section className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+          <DailyPredictionsChart items={dashboard.daily_predictions} />
+          <PredictionStatusCard completed={summary.completed_predictions} failed={summary.failed_predictions} total={summary.total_predictions} />
+        </section>
+        <section className="grid gap-4 xl:grid-cols-2">
+          <LabelDistributionCard items={summary.label_distribution} total={summary.total_predictions} />
+          <FeedbackCard total={feedbackTotal} correct={summary.feedback.correct ?? summary.feedback.correct_feedback ?? 0} incorrect={summary.feedback.incorrect ?? summary.feedback.incorrect_feedback ?? 0} pending={summary.feedback.pending ?? summary.feedback.pending_feedback ?? 0} accuracy={feedbackAccuracy} />
+        </section>
+      </>}
+      {view === "evaluation" && <>
+        <p className="text-sm text-muted-foreground">Saved evaluation results for the selected task. Date filters apply to prediction activity, not training results.</p>
+        <ResearchEvaluationPanel items={comparison} selectedItem={selectedEvaluationModel} selectedModelId={selectedEvaluationModel?.model_version_id ?? ""} onSelectedModelChange={setSelectedEvaluationModelId} />
+      </>}
+      {view === "models" && <>
+        <ModelUsageCard items={summary.model_usage} />
+        <p className="text-sm text-muted-foreground">Usage above follows the selected period. The table below shows all-time model activity for the selected task.</p>
+        <ModelComparisonTable items={comparison} />
+      </>}
 
-        <StatCard
-          label="Average confidence"
-          value={formatPercentage(
-            summary.average_confidence,
-          )}
-          description={`Range ${formatPercentage(
-            summary.minimum_confidence,
-          )}–${formatPercentage(
-            summary.maximum_confidence,
-          )}`}
-          icon={Gauge}
-        />
-
-        <StatCard
-          label="Average latency"
-          value={formatLatency(
-            summary.average_latency_ms,
-          )}
-          description="Mean model response time"
-          icon={Clock3}
-        />
-
-        <StatCard
-          label="Human feedback"
-          value={formatNumber(
-            feedbackTotal,
-          )}
-          description={`Observed accuracy ${formatPercentage(
-            feedbackAccuracy,
-          )}`}
-          icon={MessageSquareText}
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <DailyPredictionsChart
-          items={
-            dashboard.daily_predictions
-          }
-        />
-
-        <PredictionStatusCard
-          completed={
-            summary.completed_predictions
-          }
-          failed={
-            summary.failed_predictions
-          }
-          total={
-            summary.total_predictions
-          }
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <LabelDistributionCard
-          items={
-            summary.label_distribution
-          }
-          total={
-            summary.total_predictions
-          }
-        />
-
-        <ModelUsageCard
-          items={summary.model_usage}
-        />
-      </section>
-
-      <ResearchEvaluationPanel
-        items={comparison}
-        selectedItem={
-          selectedEvaluationModel
-        }
-        selectedModelId={
-          selectedEvaluationModel
-            ?.model_version_id ?? ""
-        }
-        onSelectedModelChange={
-          setSelectedEvaluationModelId
-        }
-      />
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_1.5fr]">
-        <FeedbackCard
-          total={feedbackTotal}
-          correct={
-            summary.feedback.correct ??
-            summary.feedback
-              .correct_feedback ??
-            0
-          }
-          incorrect={
-            summary.feedback.incorrect ??
-            summary.feedback
-              .incorrect_feedback ??
-            0
-          }
-          pending={
-            summary.feedback.pending ??
-            summary.feedback
-              .pending_feedback ??
-            0
-          }
-          accuracy={
-            feedbackAccuracy
-          }
-        />
-
-        <ModelComparisonTable
-          items={comparison}
-        />
-      </section>
     </main>
   );
 }
@@ -674,132 +577,28 @@ function AnalyticsHeader({
   onExport: () => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border bg-gradient-to-br from-emerald-50 via-background to-cyan-50 dark:from-emerald-950/30 dark:via-background dark:to-cyan-950/20">
-      <div className="p-6 sm:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-              <BarChart3 className="size-4" />
-              Live research analytics
-            </div>
-
-            <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
-              Analytics dashboard
-            </h1>
-
-            <p className="mt-3 max-w-3xl text-muted-foreground">
-              Inspect prediction activity,
-              model usage, confidence,
-              latency, label distribution,
-              evaluation evidence and human
-              feedback returned by the
-              BanglaGuard API.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={onRefresh}
-              disabled={isRefreshing}
-            >
-              <RefreshCw
-                className={cn(
-                  "size-4",
-                  isRefreshing &&
-                    "animate-spin",
-                )}
-              />
-              Refresh
-            </Button>
-
-            <Button
-              onClick={onExport}
-              disabled={isExporting}
-            >
-              {isExporting ? (
-                <RefreshCw className="size-4 animate-spin" />
-              ) : (
-                <Download className="size-4" />
-              )}
-              Export research ZIP
-            </Button>
-          </div>
+    <>
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+        <div><h1 className="text-2xl font-semibold tracking-tight">Analytics</h1><p className="mt-1 text-sm text-muted-foreground">Explore prediction activity, model evaluation and reviewer feedback.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="gh-button" onClick={onRefresh} disabled={isRefreshing}><RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />Refresh</button>
+          <button type="button" className="gh-button gh-button-primary" onClick={onExport} disabled={isExporting}>{isExporting ? <RefreshCw className="size-4 animate-spin" /> : <Download className="size-4" />}Export research ZIP</button>
         </div>
-      </div>
-
-      <div className="grid border-t bg-background/70 sm:grid-cols-2">
-        <div className="border-b p-4 sm:border-b-0 sm:border-r">
-          <label
-            htmlFor="analytics-date-range"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Date range
-          </label>
-
-          <select
-            id="analytics-date-range"
-            value={dateRange}
-            onChange={(event) =>
-              onDateRangeChange(
-                event.target
-                  .value as DateRangeOption,
-              )
-            }
-            className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
-          >
-            <option value="7">
-              Last 7 days
-            </option>
-
-            <option value="30">
-              Last 30 days
-            </option>
-
-            <option value="90">
-              Last 90 days
-            </option>
-
-            <option value="all">
-              All available data
-            </option>
+      </header>
+      <section aria-label="Analytics filters" className="gh-panel flex flex-wrap items-end gap-4 p-4">
+        <label className="min-w-44 flex-1 text-xs font-medium" htmlFor="analytics-date-range">Prediction period
+          <select id="analytics-date-range" value={dateRange} onChange={event => onDateRangeChange(event.target.value as DateRangeOption)} className="gh-input mt-2 block w-full">
+            <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all">All available data</option>
           </select>
-        </div>
-
-        <div className="p-4">
-          <label
-            htmlFor="analytics-task"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Analysis task
-          </label>
-
-          <select
-            id="analytics-task"
-            value={task}
-            onChange={(event) =>
-              onTaskChange(
-                event.target
-                  .value as TaskOption,
-              )
-            }
-            className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
-          >
-            <option value="all">
-              All tasks
-            </option>
-
-            <option value="hate_speech">
-              Hate-speech detection
-            </option>
-
-            <option value="sentiment">
-              Sentiment analysis
-            </option>
+        </label>
+        <label className="min-w-44 flex-1 text-xs font-medium" htmlFor="analytics-task">Analysis task
+          <select id="analytics-task" value={task} onChange={event => onTaskChange(event.target.value as TaskOption)} className="gh-input mt-2 block w-full">
+            <option value="all">All tasks</option><option value="hate_speech">Hate speech</option><option value="sentiment">Sentiment</option>
           </select>
-        </div>
-      </div>
-    </section>
+        </label>
+        <p className="max-w-sm text-xs leading-5 text-muted-foreground">Explore activity by period and task. The export contains the full research report.</p>
+      </section>
+    </>
   );
 }
 
@@ -815,19 +614,19 @@ function StatCard({
   icon: typeof Activity;
 }) {
   return (
-    <article className="rounded-3xl border bg-background p-5">
+    <article className="gh-panel p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">
             {label}
           </p>
 
-          <p className="mt-2 text-3xl font-bold">
+          <p className="mt-2 text-2xl font-semibold">
             {value}
           </p>
         </div>
 
-        <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <Icon className="size-5" />
         </div>
       </div>
@@ -845,7 +644,7 @@ function DailyPredictionsChart({
   items: DailyPredictionItem[];
 }) {
   const visibleItems =
-    items.slice(-30);
+    items;
 
   const maximum = Math.max(
     1,
@@ -855,9 +654,9 @@ function DailyPredictionsChart({
   );
 
   return (
-    <section className="rounded-3xl border bg-background p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="gh-panel overflow-hidden p-4">
+      <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <TrendingUp className="size-5" />
         </div>
 
@@ -867,15 +666,14 @@ function DailyPredictionsChart({
           </h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
-            Stored predictions grouped by
-            day.
+            Stored predictions grouped by day. Scroll to see all returned dates.
           </p>
         </div>
       </div>
 
       {visibleItems.length > 0 ? (
         <div className="mt-8 overflow-x-auto">
-          <div className="flex min-w-[560px] items-end gap-2">
+          <div className="flex items-end gap-2" style={{ minWidth: Math.max(560, visibleItems.length * 38) }}>
             {visibleItems.map(
               (item) => {
                 const count =
@@ -902,7 +700,7 @@ function DailyPredictionsChart({
 
                     <div className="flex h-[180px] w-full items-end rounded-lg bg-muted/40">
                       <div
-                        className="w-full rounded-lg bg-foreground"
+                        className="w-full rounded-sm bg-primary"
                         style={{
                           height,
                         }}
@@ -950,9 +748,9 @@ function PredictionStatusCard({
       : 0;
 
   return (
-    <section className="rounded-3xl border bg-background p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="gh-panel overflow-hidden p-4">
+      <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <Sparkles className="size-5" />
         </div>
 
@@ -967,7 +765,7 @@ function PredictionStatusCard({
         </div>
       </div>
 
-      <div className="mt-7 space-y-6">
+      <div className="mt-5 space-y-4">
         <MetricBar
           label="Completed"
           value={completed}
@@ -982,12 +780,12 @@ function PredictionStatusCard({
           percentage={failedPercentage}
         />
 
-        <div className="rounded-2xl border bg-muted/30 p-4">
+        <div className="rounded-lg border bg-muted/30 p-4">
           <p className="text-sm text-muted-foreground">
             Total stored records
           </p>
 
-          <p className="mt-2 text-2xl font-bold">
+          <p className="mt-2 text-2xl font-semibold">
             {formatNumber(total)}
           </p>
         </div>
@@ -1037,9 +835,9 @@ function LabelDistributionCard({
   total: number;
 }) {
   return (
-    <section className="rounded-3xl border bg-background p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="gh-panel overflow-hidden p-4">
+      <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <BarChart3 className="size-5" />
         </div>
 
@@ -1056,7 +854,7 @@ function LabelDistributionCard({
       </div>
 
       {items.length > 0 ? (
-        <div className="mt-7 space-y-5">
+        <div className="mt-5 space-y-4">
           {items.map((item) => {
             const percentage =
               item.percentage ??
@@ -1117,9 +915,9 @@ function ModelUsageCard({
   );
 
   return (
-    <section className="rounded-3xl border bg-background p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="gh-panel overflow-hidden p-4">
+      <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <BrainCircuit className="size-5" />
         </div>
 
@@ -1136,7 +934,7 @@ function ModelUsageCard({
       </div>
 
       {items.length > 0 ? (
-        <div className="mt-7 space-y-4">
+        <div className="mt-5 space-y-3">
           {items.map((item) => {
             const percentage =
               item.percentage ??
@@ -1151,7 +949,7 @@ function ModelUsageCard({
                 key={
                   item.model_version_id
                 }
-                className="rounded-2xl border p-4"
+                className="rounded-lg border p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1205,9 +1003,9 @@ function FeedbackCard({
   accuracy: number | null;
 }) {
   return (
-    <section className="rounded-3xl border bg-background p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="gh-panel overflow-hidden p-4">
+      <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
           <MessageSquareText className="size-5" />
         </div>
 
@@ -1223,12 +1021,12 @@ function FeedbackCard({
         </div>
       </div>
 
-      <div className="mt-7 rounded-2xl border bg-muted/30 p-5">
+      <div className="mt-7 rounded-lg border bg-muted/30 p-5">
         <p className="text-sm text-muted-foreground">
           Observed feedback accuracy
         </p>
 
-        <p className="mt-2 text-3xl font-bold">
+        <p className="mt-2 text-2xl font-semibold">
           {formatPercentage(accuracy)}
         </p>
 
@@ -1275,7 +1073,7 @@ function FeedbackMetric({
   value: number;
 }) {
   return (
-    <div className="rounded-2xl border p-4">
+    <div className="rounded-lg border p-4">
       <p className="text-xs text-muted-foreground">
         {label}
       </p>
@@ -1454,9 +1252,9 @@ function ResearchEvaluationPanel({
     !selectedItem
   ) {
     return (
-      <section className="rounded-3xl border bg-background p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+      <section className="gh-panel overflow-hidden p-4">
+        <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
             <Sparkles className="size-5" />
           </div>
 
@@ -1592,11 +1390,11 @@ function ResearchEvaluationPanel({
     Object.keys(metrics).length > 0;
 
   return (
-    <section className="overflow-hidden rounded-3xl border bg-background">
-      <div className="p-5 sm:p-6">
+    <section className="overflow-hidden gh-panel">
+      <div className="bg-muted/30 p-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
               <Sparkles className="size-5" />
             </div>
 
@@ -1629,7 +1427,7 @@ function ResearchEvaluationPanel({
                   event.target.value,
                 )
               }
-              className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              className="gh-input mt-2 w-full"
             >
               {items.map((item) => (
                 <option
@@ -1667,7 +1465,7 @@ function ResearchEvaluationPanel({
               selectedItem.status
                 .toLowerCase() ===
                 "active" &&
-                "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+                "border-emerald-300 bg-muted text-primary",
             )}
           >
             {formatWords(
@@ -1685,7 +1483,7 @@ function ResearchEvaluationPanel({
         </div>
 
         {warning && (
-          <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
             <AlertCircle className="mt-0.5 size-5 shrink-0" />
 
             <div>
@@ -1742,7 +1540,7 @@ function ResearchEvaluationPanel({
             />
           </div>
 
-          <div className="grid gap-6 border-t p-5 sm:p-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-6 border-t p-4 xl:grid-cols-[1.15fr_0.85fr]">
             <ConfusionMatrixCard
               matrix={matrix}
               labels={matrixLabels}
@@ -1776,13 +1574,13 @@ function ResearchEvaluationPanel({
             />
           </div>
 
-          <div className="border-t p-5 sm:p-6">
+          <div className="border-t p-4">
             <ClassificationReportTable
               rows={classRows}
             />
           </div>
 
-          <div className="border-t p-5 sm:p-6">
+          <div className="border-t p-4">
             <TrainingConfigurationCard
               configuration={
                 selectedItem
@@ -1808,12 +1606,12 @@ function EvaluationMetricCard({
     normalizePercentage(value);
 
   return (
-    <article className="rounded-2xl border p-4">
+    <article className="rounded-lg border p-4">
       <p className="text-xs text-muted-foreground">
         {label}
       </p>
 
-      <p className="mt-2 text-2xl font-bold">
+      <p className="mt-2 text-2xl font-semibold">
         {formatPercentage(value)}
       </p>
 
@@ -1834,7 +1632,7 @@ function ConfusionMatrixCard({
 }) {
   if (matrix.length === 0) {
     return (
-      <section className="rounded-2xl border p-5">
+      <section className="rounded-lg border p-5">
         <h3 className="font-semibold">
           Confusion matrix
         </h3>
@@ -1850,7 +1648,7 @@ function ConfusionMatrixCard({
   );
 
   return (
-    <section className="overflow-hidden rounded-2xl border">
+    <section className="overflow-hidden rounded-lg border">
       <div className="border-b p-5">
         <h3 className="font-semibold">
           Confusion matrix
@@ -1912,7 +1710,7 @@ function ConfusionMatrixCard({
                           <div
                             className="flex h-16 min-w-20 items-center justify-center rounded-xl border font-semibold"
                             style={{
-                              backgroundColor: `rgba(16, 185, 129, ${
+                              backgroundColor: `rgba(55, 95, 125, ${
                                 0.08 +
                                 intensity *
                                   0.55
@@ -2060,7 +1858,7 @@ function EvaluationContextCard({
   ];
 
   return (
-    <section className="rounded-2xl border">
+    <section className="rounded-lg border">
       <div className="border-b p-5">
         <h3 className="font-semibold">
           Evaluation context
@@ -2112,27 +1910,27 @@ function ClassificationReportTable({
       </div>
 
       {rows.length > 0 ? (
-        <div className="mt-5 overflow-x-auto rounded-2xl border">
-          <table className="w-full min-w-[650px] text-sm">
+        <div className="mt-5 overflow-x-auto rounded-lg border">
+          <table className="gh-table w-full min-w-[650px]">
             <thead className="bg-muted/40 text-left">
               <tr>
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Class
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Precision
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Recall
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   F1 score
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Support
                 </th>
               </tr>
@@ -2144,31 +1942,31 @@ function ClassificationReportTable({
                   key={row.label}
                   className="border-t"
                 >
-                  <td className="px-5 py-4 font-medium">
+                  <td className="px-4 py-3 font-medium">
                     {formatWords(
                       row.label,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatPercentage(
                       row.precision,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatPercentage(
                       row.recall,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatPercentage(
                       row.f1Score,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatNumber(
                       row.support,
                     )}
@@ -2373,7 +2171,7 @@ function TrainingConfigurationCard({
       </div>
 
       {sortedEntries.length > 0 ? (
-        <dl className="mt-5 grid overflow-hidden rounded-2xl border sm:grid-cols-2 xl:grid-cols-3">
+        <dl className="mt-5 grid overflow-hidden rounded-lg border sm:grid-cols-2 xl:grid-cols-3">
           {sortedEntries.map(
             ([key, value]) => (
               <div
@@ -2413,10 +2211,10 @@ function ModelComparisonTable({
   items: ModelComparisonItem[];
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border bg-background">
-      <div className="p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <section className="overflow-hidden gh-panel">
+      <div className="p-4">
+        <div className="-mx-4 -mt-4 mb-4 flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
             <BrainCircuit className="size-5" />
           </div>
 
@@ -2435,34 +2233,34 @@ function ModelComparisonTable({
 
       {items.length > 0 ? (
         <div className="overflow-x-auto border-t">
-          <table className="min-w-[900px] w-full text-sm">
+          <table className="gh-table min-w-[900px] w-full">
             <thead className="bg-muted/40 text-left">
               <tr>
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Model
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Status
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Predictions
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Confidence
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Latency
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Feedback
                 </th>
 
-                <th className="px-5 py-4 font-medium">
+                <th className="px-4 py-3 font-medium">
                   Observed accuracy
                 </th>
               </tr>
@@ -2476,7 +2274,7 @@ function ModelComparisonTable({
                   }
                   className="border-t"
                 >
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     <p className="font-medium">
                       {item.model_name}
                     </p>
@@ -2489,13 +2287,13 @@ function ModelComparisonTable({
                     </p>
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     <Badge
                       variant="outline"
                       className={cn(
                         item.status ===
                           "active" &&
-                          "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+                          "border-emerald-300 bg-muted text-primary",
                       )}
                     >
                       {formatWords(
@@ -2504,31 +2302,31 @@ function ModelComparisonTable({
                     </Badge>
                   </td>
 
-                  <td className="px-5 py-4 font-medium">
+                  <td className="px-4 py-3 font-medium">
                     {formatNumber(
                       item.prediction_count,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatPercentage(
                       item.average_confidence,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatLatency(
                       item.average_latency_ms,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatNumber(
                       item.feedback_count,
                     )}
                   </td>
 
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-3">
                     {formatPercentage(
                       item.observed_feedback_accuracy,
                     )}
@@ -2553,7 +2351,7 @@ function EmptyBlock({
   message: string;
 }) {
   return (
-    <div className="mt-6 rounded-2xl border border-dashed p-6 text-center">
+    <div className="mt-6 rounded-lg border border-dashed p-6 text-center">
       <BarChart3 className="mx-auto size-6 text-muted-foreground" />
 
       <p className="mt-3 text-sm text-muted-foreground">
@@ -2565,8 +2363,8 @@ function EmptyBlock({
 
 function AnalyticsLoading() {
   return (
-    <main className="space-y-6 p-4 sm:p-6 lg:p-8">
-      <section className="h-72 animate-pulse rounded-3xl border bg-muted/40" />
+    <main className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 lg:px-6">
+      <section className="h-32 animate-pulse rounded-xl border bg-muted/40" />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({
@@ -2574,15 +2372,15 @@ function AnalyticsLoading() {
         }).map((_, index) => (
           <div
             key={index}
-            className="h-36 animate-pulse rounded-3xl border bg-muted/40"
+            className="h-36 animate-pulse rounded-xl border bg-muted/40"
           />
         ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="h-96 animate-pulse rounded-3xl border bg-muted/40" />
+        <div className="h-96 animate-pulse rounded-xl border bg-muted/40" />
 
-        <div className="h-96 animate-pulse rounded-3xl border bg-muted/40" />
+        <div className="h-96 animate-pulse rounded-xl border bg-muted/40" />
       </section>
     </main>
   );
